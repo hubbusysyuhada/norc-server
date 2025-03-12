@@ -1,20 +1,32 @@
+import lodash from 'lodash'
+import axios from 'axios'
 const jobName = process.argv[2];
 type MessageType = {
   type: string;
   functionString: string;
   ctx: Record<string, any>
 }
-/*
-  1. console.log more than 1 parameter will not saved
-  2. printing process.env not working
- */
-console.log = (data) => process.send({ type: 'log', data })
+console.log = (data, ...optionalParams) => {
+  if (optionalParams.length) {
+    optionalParams.forEach(value => {
+      if (typeof value === 'object' && !(value instanceof Date)) value = JSON.stringify(value)
+      data += ` ${value}`
+    })
+  }
+  process.send({ type: 'log', data })
+}
 process.on('message', async (message: MessageType) => {
   if (message.type === 'jobFunction') {
     try {
-      const fn = eval(`async () => await (${message.functionString})(${JSON.stringify(message.ctx)})`);
+      const fn = eval(`async (ctx) => await (${message.functionString})(ctx)`);
       process.send({ type: 'system', data: 'Starting job...' });
-      await fn();
+      await fn({
+        ...message.ctx,
+        packages: {
+          lodash,
+          axios
+        }
+      });
       process.send({ type: 'system', data: 'Job completed.' });
       process.exit(0);
     } catch (error) {

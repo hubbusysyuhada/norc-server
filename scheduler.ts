@@ -1,15 +1,11 @@
 import cron from 'node-cron'
 import { fork } from 'child_process'
 import path from 'path'
-import fs from 'fs'
 
 
 import { CronJob, CronCommand, job } from 'cron'
 import Job, { JobTypes } from './database/entity/Job';
 import MikroOrmInstance from './database';
-
-import axios from 'axios';
-import lodash from 'lodash'
 import { MySqlDriver, SqlEntityManager } from '@mikro-orm/mysql';
 import Log from './database/entity/Log';
 
@@ -29,7 +25,7 @@ export default class Scheduler {
 
   public registerJob(job: Job) {
       const { name, definition, pattern } = job
-      const child = fork(path.join(__dirname, 'jobWrapper.ts'), [job.name]);
+      const child = fork(path.join(__dirname, 'runner.ts'), [job.name]);
       child.on('message', (message: {type: "log" | "error"; data: string}) => {
         const { type, data: val } = message
         if (!this.jobLogs[job.id]) this.jobLogs[job.id] = []
@@ -44,13 +40,7 @@ export default class Scheduler {
         }
         this.saveLog(job)
       });
-      child.send({ type: 'jobFunction', functionString: definition, ctx: { 
-        env: { name: "hehehehe" },
-        package: {
-          lodash,
-          axios
-        }
-      } });
+      child.send({ type: 'jobFunction', functionString: definition, ctx: this.ctx });
   }
 
   private async saveLog(job: Job) {
@@ -68,20 +58,12 @@ export default class Scheduler {
   }
 
   private async initEnv() {
-    const data = { PWD: process.env.PWD }
+    const data = { PWD: process.env.PWD, DB_HOST: process.env.DB_HOST }
     this.ctx.env = data
-  }
-
-  private async initPackages() {
-    this.ctx.packages = {
-      axios,
-      lodash,
-    }
   }
 
   private async initCtx() {
     await this.initEnv()
-    await this.initPackages()
   }
 
   public addEnv(key: string, value: string) {
